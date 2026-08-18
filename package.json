@@ -13,6 +13,8 @@
   "author": "Jerio Putra Pratama",
   "license": "MIT",
   "dependencies": {
-    "commander": "^15.0.0"
+    "@inquirer/prompts": "^8.5.2",
+    "commander": "^15.0.0",
+    "mysql2": "^3.23.3"
   }
 }

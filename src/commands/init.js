@@ -1,6 +1,16 @@
 const { execSync } = require("child_process");
 const { checkCommand } = require("../utils/checkCommand");
+const laravelConfig = require("../config/frameworks/laravel");
 const fs = require("fs");
+
+const {
+  promptMySQLConfig,
+  connectMySQL,
+  ensureDatabase,
+  configureLaravelEnv,
+  runLaravelMigrations,
+  getDatabaseErrorMessage,
+} = require("../utils/database");
 
 const frameworks = ["laravel", "lumen", "express", "react", "next"];
 
@@ -65,7 +75,7 @@ const nextSteps = {
   },
 };
 
-function init(framework, projectName) {
+async function init(framework, projectName) {
   if (!framework) {
     console.log("Please specify a framework.\n");
     console.log("Example:");
@@ -98,7 +108,10 @@ function init(framework, projectName) {
 
   console.log("\nChecking Environment...\n");
 
-  const frameworkRequirements = requirements[framework];
+  const frameworkRequirements =
+    framework === "laravel"
+      ? laravelConfig.requirements
+      : requirements[framework];
 
   for (const item of frameworkRequirements) {
     const result = checkCommand(item.command, item.label);
@@ -117,7 +130,9 @@ function init(framework, projectName) {
 
   console.log(`Creating ${frameworkName} Project...`);
 
-  const installer = installers[framework];
+  const installer =
+    framework === "laravel" ? laravelConfig.installer : installers[framework];
+
   const step = nextSteps[framework];
 
   if (fs.existsSync(projectName)) {
@@ -147,6 +162,50 @@ function init(framework, projectName) {
     execSync(`${installer} ${projectName}`, {
       stdio: "inherit",
     });
+
+    // Database setup will be handled here.
+    let connection;
+
+    try {
+      const databaseConfig = await promptMySQLConfig();
+
+      console.log("\n🗄️ Database Configuration Complete!");
+
+      connection = await connectMySQL(databaseConfig);
+
+      console.log("✅ MySQL connection successful!");
+
+      const databaseCreated = await ensureDatabase(
+        connection,
+        databaseConfig.database,
+      );
+
+      if (databaseCreated) {
+        console.log(
+          `✅ Database "${databaseConfig.database}" created successfully!`,
+        );
+      } else {
+        console.log(`✅ Database "${databaseConfig.database}" already exists!`);
+      }
+
+      const projectPath = require("path").resolve(projectName);
+
+      configureLaravelEnv(projectPath, databaseConfig);
+
+      console.log("✅ Laravel .env configured successfully!");
+
+      await runLaravelMigrations(projectPath);
+
+      console.log("✅ Laravel migrations completed successfully!");
+    } catch (error) {
+      console.log("\n❌ Database setup failed!");
+      console.log(`\nReason: ${getDatabaseErrorMessage(error)}`);
+      return;
+    } finally {
+      if (connection) {
+        await connection.end();
+      }
+    }
 
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
